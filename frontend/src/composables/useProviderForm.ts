@@ -21,6 +21,7 @@ export interface Provider {
   endpoint_type?: string
   high_concurrency?: boolean
   short_prompt?: boolean
+  use_sse?: boolean
 }
 
 // 服务商配置类型
@@ -52,6 +53,7 @@ export interface ImageProviderForm {
   high_concurrency: boolean
   short_prompt: boolean
   endpoint_type: string
+  use_sse: boolean
   _has_api_key: boolean
 }
 
@@ -128,6 +130,7 @@ export function useProviderForm() {
       high_concurrency: false,
       short_prompt: false,
       endpoint_type: '/v1/images/generations',
+      use_sse: false,
       _has_api_key: false
     }
   }
@@ -364,6 +367,7 @@ export function useProviderForm() {
       high_concurrency: provider.high_concurrency || false,
       short_prompt: provider.short_prompt || false,
       endpoint_type: provider.endpoint_type || '/v1/images/generations',
+      use_sse: provider.use_sse || false,
       _has_api_key: !!provider.api_key_masked
     }
     showImageModal.value = true
@@ -408,9 +412,10 @@ export function useProviderForm() {
       short_prompt: imageForm.value.short_prompt
     }
 
-    // 如果是 OpenAI 兼容接口，保存 endpoint_type
+    // 如果是 OpenAI 兼容接口，保存 endpoint_type 和 use_sse
     if (imageForm.value.type === 'image_api') {
       providerData.endpoint_type = imageForm.value.endpoint_type
+      providerData.use_sse = imageForm.value.use_sse
     }
 
     // 如果填写了新的 API Key，使用新的；否则保留原有的

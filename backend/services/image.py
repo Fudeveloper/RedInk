@@ -194,12 +194,32 @@ class ImageService:
                     )
                 else:
                     logger.debug(f"  使用 OpenAI 兼容生成器")
-                    image_data = self.generator.generate_image(
-                        prompt=prompt,
-                        size=self.provider_config.get('default_size', '1024x1024'),
-                        model=self.provider_config.get('model'),
-                        quality=self.provider_config.get('quality', 'standard'),
-                    )
+                    # 检查是否使用SSE流式调用
+                    if self.provider_config.get('use_sse', False):
+                        logger.info(f"  使用 SSE 流式调用生成图片 [{index}]")
+                        image_data = None
+                        for event in self.generator.generate_image_stream(
+                            prompt=prompt,
+                            size=self.provider_config.get('default_size', '1024x1024'),
+                            model=self.provider_config.get('model'),
+                            quality=self.provider_config.get('quality', 'standard'),
+                        ):
+                            if event['event'] == 'complete' and 'image_data' in event['data']:
+                                image_data = event['data']['image_data']
+                                break
+                            elif event['event'] == 'error':
+                                raise Exception(f"SSE生成失败: {event['data'].get('error', '未知错误')}")
+
+                        if image_data is None:
+                            raise Exception("SSE流式调用未能获取图片数据")
+                    else:
+                        logger.info(f"  使用标准 JSON 调用生成图片 [{index}]")
+                        image_data = self.generator.generate_image(
+                            prompt=prompt,
+                            size=self.provider_config.get('default_size', '1024x1024'),
+                            model=self.provider_config.get('model'),
+                            quality=self.provider_config.get('quality', 'standard'),
+                        )
 
                 # 保存图片（使用当前任务目录）
                 filename = f"{index}.png"

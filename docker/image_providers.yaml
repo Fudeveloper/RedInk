@@ -8,3 +8,5 @@ providers:
     high_concurrency: false
     model: dall-e-3
     type: image_api
+    use_sse: false  # 是否使用SSE流式调用 (适用于支持SSE的API后端)
+    endpoint_type: /v1/images/generations  # API端点类型

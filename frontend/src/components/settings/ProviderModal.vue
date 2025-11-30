@@ -91,6 +91,24 @@
             默认端点：/v1/chat/completions（大多数 OpenAI 兼容 API 使用此端点）
           </span>
         </div>
+
+        <!-- SSE 流式调用（仅 OpenAI 兼容接口） -->
+        <div class="form-group" v-if="showSseOption">
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              class="form-checkbox"
+              :checked="formData.use_sse"
+              @change="updateField('use_sse', ($event.target as HTMLInputElement).checked)"
+            />
+            使用 SSE 流式调用
+          </label>
+          <span class="form-hint">
+            启用后将以 Server-Sent Events 方式调用 API（适用于支持流式响应的 API 后端）
+            <br>
+            <strong>注意：</strong>请确认您的 API 后端支持 SSE 流式调用
+          </span>
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -133,6 +151,7 @@ interface FormData {
   base_url: string
   model: string
   endpoint_type?: string
+  use_sse?: boolean
 }
 
 // 定义类型选项
@@ -174,6 +193,11 @@ const showBaseUrl = computed(() => {
 
 // 是否显示端点类型
 const showEndpointType = computed(() => {
+  return props.formData.type === 'openai_compatible'
+})
+
+// 是否显示SSE选项
+const showSseOption = computed(() => {
   return props.formData.type === 'openai_compatible'
 })
 
@@ -394,6 +418,36 @@ const previewUrl = computed(() => {
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-right: 6px;
+}
+
+/* Checkbox样式 */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main, #1a1a1a);
+}
+
+.form-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-color, #eee);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.form-checkbox:checked {
+  background: var(--primary, #ff2442);
+  border-color: var(--primary, #ff2442);
+}
+
+.form-checkbox:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 36, 66, 0.2);
 }
 
 @keyframes spin {
