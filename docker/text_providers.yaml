@@ -3,9 +3,10 @@
 active_provider: default
 providers:
   default:
-    api_key: ""
-    base_url: https://api.openai.com/v1
+    api_key: "sk-xgykkyxfjoiqezssbnntkrpmekulzaejbenubgfvlxfjnojx"
+    base_url: https://api.siliconflow.cn/
     max_output_tokens: 8000
-    model: gpt-4o
+    model: Qwen/Qwen2-7B-Instruct
     temperature: 1
     type: openai_compatible
+    endpoint_type: /v1/chat/completions

@@ -3,10 +3,20 @@
 active_provider: default
 providers:
   default:
-    api_key: ""
-    base_url: https://api.openai.com/v1
+    api_key: liklik
+    base_url: https://flow2aaa.zeabur.app
+    endpoint_type: /v1/chat/completions
     high_concurrency: false
-    model: dall-e-3
+    model: gemini-2.5-flash-image-landscape
+    short_prompt: false
     type: image_api
-    use_sse: false  # 是否使用SSE流式调用 (适用于支持SSE的API后端)
-    endpoint_type: /v1/images/generations  # API端点类型
+    use_sse: true
+
+  google_ai:
+    api_key: AIzaSyAH6Ly8Tq-qda00g7Y4A3lYqfYsk4CGKvk
+    base_url: https://generativelanguage.googleapis.com/
+    high_concurrency: false
+    model: gemini-3-pro-image-preview
+    short_prompt: true
+    type: google_genai
+    use_sse: false

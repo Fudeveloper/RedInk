@@ -149,7 +149,7 @@ class Config:
         else:
             logger.info(f"服务商 [{provider_name}] 使用标准 JSON 调用 (type={provider_type})")
 
-        logger.info(f"图片服务商配置验证通过: {provider_name} (type={provider_type}, use_sse={use_sse})")
+        logger.info(f"服务商 [{provider_name}] 配置验证通过: {provider_name} (type={provider_type}, use_sse={use_sse})")
         return provider_config
 
     @classmethod

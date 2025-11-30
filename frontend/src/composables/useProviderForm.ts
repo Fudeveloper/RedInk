@@ -39,6 +39,7 @@ export interface TextProviderForm {
   base_url: string
   model: string
   endpoint_type: string
+  use_sse: boolean
   _has_api_key: boolean
 }
 
@@ -112,6 +113,7 @@ export function useProviderForm() {
       base_url: '',
       model: '',
       endpoint_type: '/v1/chat/completions',
+      use_sse: false,
       _has_api_key: false
     }
   }
@@ -213,6 +215,7 @@ export function useProviderForm() {
       base_url: provider.base_url || '',
       model: provider.model || '',
       endpoint_type: provider.endpoint_type || '/v1/chat/completions',
+      use_sse: provider.use_sse || false,
       _has_api_key: !!provider.api_key_masked
     }
     showTextModal.value = true
@@ -266,9 +269,10 @@ export function useProviderForm() {
       providerData.base_url = textForm.value.base_url
     }
 
-    // 如果是 OpenAI 兼容接口，保存 endpoint_type
+    // 如果是 OpenAI 兼容接口，保存 endpoint_type 和 use_sse
     if (textForm.value.type === 'openai_compatible') {
       providerData.endpoint_type = textForm.value.endpoint_type
+      providerData.use_sse = textForm.value.use_sse
     }
 
     textConfig.value.providers[name] = providerData
@@ -301,7 +305,8 @@ export function useProviderForm() {
         provider_name: editingTextProvider.value || undefined,
         api_key: textForm.value.api_key || undefined,
         base_url: textForm.value.base_url,
-        model: textForm.value.model
+        model: textForm.value.model,
+        use_sse: textForm.value.use_sse
       })
       if (result.success) {
         alert('✅ ' + result.message)

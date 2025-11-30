@@ -203,7 +203,7 @@ const showEndpointType = computed(() => {
 
 // 是否显示SSE选项
 const showSseOption = computed(() => {
-  return props.formData.type === 'openai_compatible' || props.formData.type === 'image_api'
+  return props.formData.type === 'openai_compatible'
 })
 
 // Base URL 占位符
