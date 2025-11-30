@@ -142,7 +142,14 @@ class Config:
                     "解决方案：在系统设置页面编辑该服务商，填写 Base URL"
                 )
 
-        logger.info(f"图片服务商配置验证通过: {provider_name} (type={provider_type})")
+        # 记录SSE配置状态
+        use_sse = provider_config.get('use_sse', False)
+        if use_sse:
+            logger.info(f"服务商 [{provider_name}] 启用 SSE 流式调用 (type={provider_type})")
+        else:
+            logger.info(f"服务商 [{provider_name}] 使用标准 JSON 调用 (type={provider_type})")
+
+        logger.info(f"图片服务商配置验证通过: {provider_name} (type={provider_type}, use_sse={use_sse})")
         return provider_config
 
     @classmethod

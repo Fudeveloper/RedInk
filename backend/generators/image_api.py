@@ -41,6 +41,10 @@ class ImageApiGenerator(ImageGeneratorBase):
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
         self.image_size = config.get('image_size', '4K')
 
+        # 是否使用SSE流式调用
+        self.use_sse = config.get('use_sse', False)
+        logger.info(f"  使用 SSE: {self.use_sse}")
+
         # 支持自定义端点路径
         endpoint_type = config.get('endpoint_type', '/v1/images/generations')
         # 兼容旧的简写格式
@@ -53,7 +57,7 @@ class ImageApiGenerator(ImageGeneratorBase):
             endpoint_type = '/' + endpoint_type
         self.endpoint_type = endpoint_type
 
-        logger.info(f"ImageApiGenerator 初始化完成: base_url={self.base_url}, model={self.model}, endpoint={self.endpoint_type}")
+        logger.info(f"ImageApiGenerator 初始化完成: base_url={self.base_url}, model={self.model}, endpoint={self.endpoint_type}, use_sse={self.use_sse}")
 
     def validate_config(self) -> bool:
         """验证配置是否有效"""
@@ -64,6 +68,55 @@ class ImageApiGenerator(ImageGeneratorBase):
                 "解决方案：在系统设置页面编辑该服务商，填写 API Key"
             )
         return True
+
+    def generate_image_stream(
+        self,
+        prompt: str,
+        aspect_ratio: str = None,
+        temperature: float = 1.0,
+        model: str = None,
+        reference_image: Optional[bytes] = None,
+        reference_images: Optional[List[bytes]] = None,
+        **kwargs
+    ):
+        """
+        流式生成图片 (SSE)
+
+        Args:
+            prompt: 图片描述
+            aspect_ratio: 宽高比
+            temperature: 创意度（未使用，保留接口兼容）
+            model: 模型名称
+            reference_image: 单张参考图片数据（向后兼容）
+            reference_images: 多张参考图片数据列表
+            **kwargs: 其他参数
+
+        Yields:
+            dict: 包含事件类型和数据的字典
+        """
+        self.validate_config()
+
+        if aspect_ratio is None:
+            aspect_ratio = self.default_aspect_ratio
+
+        if model is None:
+            model = self.model
+
+        logger.info(f"Image API 流式生成图片: model={model}, aspect_ratio={aspect_ratio}")
+
+        try:
+            # 根据端点类型选择不同的生成方式
+            if 'chat' in self.endpoint_type or 'completions' in self.endpoint_type:
+                yield from self._generate_via_chat_api_stream(prompt, aspect_ratio, model, reference_image, reference_images)
+            else:
+                # 默认使用 images API
+                yield from self._generate_via_images_api_stream(prompt, aspect_ratio, model, reference_image, reference_images)
+        except Exception as e:
+            logger.error(f"流式生成图片失败: {str(e)}")
+            yield {
+                "event": "error",
+                "data": {"error": str(e), "model": model}
+            }
 
     def get_supported_sizes(self) -> List[str]:
         """获取支持的图片尺寸"""
@@ -343,6 +396,284 @@ class ImageApiGenerator(ImageGeneratorBase):
             "1. 确认模型名称正确\n"
             "2. 修改提示词后重试"
         )
+
+    def _generate_via_images_api_stream(
+        self,
+        prompt: str,
+        aspect_ratio: str,
+        model: str,
+        reference_image: Optional[bytes] = None,
+        reference_images: Optional[List[bytes]] = None
+    ):
+        """通过 /v1/images/generations 端点流式生成图片"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream"
+        }
+
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "response_format": "b64_json",
+            "aspect_ratio": aspect_ratio,
+            "image_size": self.image_size,
+            "stream": True  # 启用流式
+        }
+
+        # 收集所有参考图片
+        all_reference_images = []
+        if reference_images and len(reference_images) > 0:
+            all_reference_images.extend(reference_images)
+        if reference_image and reference_image not in all_reference_images:
+            all_reference_images.append(reference_image)
+
+        # 如果有参考图片，添加到 image 数组
+        if all_reference_images:
+            logger.debug(f"  添加 {len(all_reference_images)} 张参考图片")
+            image_uris = []
+            for idx, img_data in enumerate(all_reference_images):
+                compressed_img = compress_image(img_data, max_size_kb=200)
+                logger.debug(f"  参考图 {idx}: {len(img_data)} -> {len(compressed_img)} bytes")
+                base64_image = base64.b64encode(compressed_img).decode('utf-8')
+                data_uri = f"data:image/png;base64,{base64_image}"
+                image_uris.append(data_uri)
+
+            payload["image"] = image_uris
+
+            ref_count = len(all_reference_images)
+            enhanced_prompt = f"""参考提供的 {ref_count} 张图片的风格（色彩、光影、构图、氛围），生成一张新图片。
+
+新图片内容：{prompt}
+
+要求：
+1. 保持相似的色调和氛围
+2. 使用相似的光影处理
+3. 保持一致的画面质感
+4. 如果参考图中有人物或产品，可以适当融入"""
+            payload["prompt"] = enhanced_prompt
+
+        api_url = f"{self.base_url}{self.endpoint_type}"
+        logger.debug(f"  发送流式请求到: {api_url}")
+
+        try:
+            response = requests.post(
+                api_url,
+                headers=headers,
+                json=payload,
+                timeout=300,
+                stream=True
+            )
+
+            if response.status_code != 200:
+                error_detail = response.text[:500]
+                logger.error(f"Image API 流式请求失败: status={response.status_code}, error={error_detail}")
+                yield {
+                    "event": "error",
+                    "data": {"error": f"HTTP {response.status_code}: {error_detail}", "model": model}
+                }
+                return
+
+            # 处理SSE流
+            for line in response.iter_lines():
+                if line:
+                    line_str = line.decode('utf-8').strip()
+                    if line_str.startswith('data: '):
+                        data_str = line_str[6:]  # 去除 'data: ' 前缀
+                        if data_str == '[DONE]':
+                            break
+
+                        try:
+                            data = json.loads(data_str)
+                            if 'data' in data and len(data['data']) > 0:
+                                item = data['data'][0]
+                                if 'b64_json' in item:
+                                    b64_data_uri = item['b64_json']
+                                    if b64_data_uri.startswith('data:'):
+                                        b64_string = b64_data_uri.split(',', 1)[1]
+                                    else:
+                                        b64_string = b64_data_uri
+                                    image_data = base64.b64decode(b64_string)
+                                    logger.info(f"✅ Image API 流式图片生成成功: {len(image_data)} bytes")
+                                    yield {
+                                        "event": "complete",
+                                        "data": {"image_data": image_data, "model": model}
+                                    }
+                                    break
+                        except json.JSONDecodeError:
+                            logger.warning(f"无法解析SSE数据: {data_str}")
+                            continue
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"流式请求异常: {str(e)}")
+            yield {
+                "event": "error",
+                "data": {"error": f"请求异常: {str(e)}", "model": model}
+            }
+
+    def _generate_via_chat_api_stream(
+        self,
+        prompt: str,
+        aspect_ratio: str,
+        model: str,
+        reference_image: Optional[bytes] = None,
+        reference_images: Optional[List[bytes]] = None
+    ):
+        """通过 /v1/chat/completions 端点流式生成图片"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream"
+        }
+
+        # 构建用户消息内容
+        user_content: Any = prompt
+
+        # 收集所有参考图片
+        all_reference_images = []
+        if reference_images and len(reference_images) > 0:
+            all_reference_images.extend(reference_images)
+        if reference_image and reference_image not in all_reference_images:
+            all_reference_images.append(reference_image)
+
+        # 如果有参考图片，构建多模态消息
+        if all_reference_images:
+            logger.debug(f"  添加 {len(all_reference_images)} 张参考图片到 chat 消息")
+            content_parts = [{"type": "text", "text": prompt}]
+
+            for idx, img_data in enumerate(all_reference_images):
+                compressed_img = compress_image(img_data, max_size_kb=200)
+                logger.debug(f"  参考图 {idx}: {len(img_data)} -> {len(compressed_img)} bytes")
+                base64_image = base64.b64encode(compressed_img).decode('utf-8')
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                })
+
+            user_content = content_parts
+
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": user_content}],
+            "max_tokens": 4096,
+            "temperature": 1.0,
+            "stream": True  # 启用流式
+        }
+
+        api_url = f"{self.base_url}{self.endpoint_type}"
+        logger.info(f"Chat API 流式生成图片: {api_url}, model={model}")
+
+        try:
+            response = requests.post(
+                api_url,
+                headers=headers,
+                json=payload,
+                timeout=300,
+                stream=True
+            )
+
+            if response.status_code != 200:
+                error_detail = response.text[:500]
+                logger.error(f"Chat API 流式请求失败: status={response.status_code}, error={error_detail}")
+                yield {
+                    "event": "error",
+                    "data": {"error": f"HTTP {response.status_code}: {error_detail}", "model": model}
+                }
+                return
+
+            # 处理SSE流
+            accumulated_content = ""
+            for line in response.iter_lines():
+                if line:
+                    line_str = line.decode('utf-8').strip()
+                    if line_str.startswith('data: '):
+                        data_str = line_str[6:]  # 去除 'data: ' 前缀
+                        if data_str == '[DONE]':
+                            break
+
+                        try:
+                            data = json.loads(data_str)
+                            if 'choices' in data and len(data['choices']) > 0:
+                                choice = data['choices'][0]
+                                if 'delta' in choice and 'content' in choice['delta']:
+                                    delta_content = choice['delta']['content']
+                                    accumulated_content += delta_content
+
+                                    # 尝试解析累积的内容
+                                    import re
+
+                                    # 1. 尝试解析 Markdown 图片链接: ![xxx](url)
+                                    image_urls = re.findall(r'!\[.*?\]\((https?://[^\s\)]+)\)', accumulated_content)
+                                    if image_urls:
+                                        logger.info(f"从流式内容提取到图片URL: {image_urls[0][:100]}...")
+                                        try:
+                                            img_bytes = self._download_image(image_urls[0])
+                                            yield {
+                                                "event": "complete",
+                                                "data": {"image_data": img_bytes, "model": model}
+                                            }
+                                            return
+                                        except Exception as e:
+                                            logger.warning(f"下载图片失败: {str(e)}")
+                                            continue
+
+                                    # 2. 尝试解析 Markdown 图片 Base64: ![xxx](data:image/...)
+                                    base64_urls = re.findall(r'!\[.*?\]\((data:image\/[^;]+;base64,[^\s\)]+)\)', accumulated_content)
+                                    if base64_urls:
+                                        logger.info("从流式内容提取到Base64图片数据")
+                                        base64_data = base64_urls[0].split(",")[1]
+                                        try:
+                                            img_bytes = base64.b64decode(base64_data)
+                                            logger.info(f"✅ 从流式内容提取Base64图片: {len(img_bytes)} bytes")
+                                            yield {
+                                                "event": "complete",
+                                                "data": {"image_data": img_bytes, "model": model}
+                                            }
+                                            return
+                                        except Exception as e:
+                                            logger.warning(f"Base64解码失败: {str(e)}")
+                                            continue
+
+                                    # 3. 检查是否包含完整的Base64数据
+                                    if 'data:image/' in accumulated_content and accumulated_content.count(',') > 0:
+                                        base64_pattern = r'data:image/[^;]+;base64,([A-Za-z0-9+/=]+)'
+                                        matches = re.findall(base64_pattern, accumulated_content)
+                                        if matches:
+                                            try:
+                                                img_bytes = base64.b64decode(matches[-1])  # 使用最后一个匹配
+                                                logger.info(f"✅ 从流式内容提取Base64图片: {len(img_bytes)} bytes")
+                                                yield {
+                                                    "event": "complete",
+                                                    "data": {"image_data": img_bytes, "model": model}
+                                                }
+                                                return
+                                            except Exception as e:
+                                                logger.warning(f"Base64解码失败: {str(e)}")
+                                                continue
+
+                                    # 发送进度更新
+                                    yield {
+                                        "event": "progress",
+                                        "data": {"content": delta_content, "model": model}
+                                    }
+
+                        except json.JSONDecodeError:
+                            logger.warning(f"无法解析SSE数据: {data_str}")
+                            continue
+
+            # 如果流结束但未提取到图片
+            logger.error("流式响应结束但未提取到有效图片数据")
+            yield {
+                "event": "error",
+                "data": {"error": "流式响应结束但未提取到有效图片数据", "model": model}
+            }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"流式请求异常: {str(e)}")
+            yield {
+                "event": "error",
+                "data": {"error": f"请求异常: {str(e)}", "model": model}
+            }
 
     def _download_image(self, url: str) -> bytes:
         """下载图片并返回二进制数据"""

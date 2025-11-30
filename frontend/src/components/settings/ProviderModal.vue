@@ -103,10 +103,15 @@
             />
             使用 SSE 流式调用
           </label>
-          <span class="form-hint">
-            启用后将以 Server-Sent Events 方式调用 API（适用于支持流式响应的 API 后端）
+          <span class="form-hint" v-if="formData.type === 'openai_compatible'">
+            启用后将以 Server-Sent Events 方式调用 OpenAI 兼容 API（适用于支持流式响应的 API 后端）
             <br>
             <strong>注意：</strong>请确认您的 API 后端支持 SSE 流式调用
+          </span>
+          <span class="form-hint" v-else-if="formData.type === 'image_api'">
+            启用后将以 Server-Sent Events 方式调用图片生成 API（适用于支持流式响应的 API 后端）
+            <br>
+            <strong>注意：</strong>请确认您的图片生成 API 后端支持 SSE 流式调用
           </span>
         </div>
       </div>
@@ -198,7 +203,7 @@ const showEndpointType = computed(() => {
 
 // 是否显示SSE选项
 const showSseOption = computed(() => {
-  return props.formData.type === 'openai_compatible'
+  return props.formData.type === 'openai_compatible' || props.formData.type === 'image_api'
 })
 
 // Base URL 占位符

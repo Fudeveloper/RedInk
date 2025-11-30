@@ -66,7 +66,7 @@ export const textTypeOptions = [
 // 图片服务商类型选项
 export const imageTypeOptions = [
   { value: 'google_genai', label: 'Google GenAI' },
-  { value: 'image_api', label: 'OpenAI 兼容接口' }
+  { value: 'image_api', label: 'OpenAI 兼容接口 (支持SSE)' }
 ]
 
 /**

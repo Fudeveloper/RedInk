@@ -185,13 +185,34 @@ class ImageService:
                     if reference_image:
                         reference_images.append(reference_image)
 
-                    image_data = self.generator.generate_image(
-                        prompt=prompt,
-                        aspect_ratio=self.provider_config.get('default_aspect_ratio', '3:4'),
-                        temperature=self.provider_config.get('temperature', 1.0),
-                        model=self.provider_config.get('model', 'nano-banana-2'),
-                        reference_images=reference_images if reference_images else None,
-                    )
+                    # 检查是否使用SSE流式调用
+                    if self.provider_config.get('use_sse', False):
+                        logger.info(f"  使用 SSE 流式调用生成图片 [{index}]")
+                        image_data = None
+                        for event in self.generator.generate_image_stream(
+                            prompt=prompt,
+                            aspect_ratio=self.provider_config.get('default_aspect_ratio', '3:4'),
+                            temperature=self.provider_config.get('temperature', 1.0),
+                            model=self.provider_config.get('model', 'nano-banana-2'),
+                            reference_images=reference_images if reference_images else None,
+                        ):
+                            if event['event'] == 'complete' and 'image_data' in event['data']:
+                                image_data = event['data']['image_data']
+                                break
+                            elif event['event'] == 'error':
+                                raise Exception(f"SSE生成失败: {event['data'].get('error', '未知错误')}")
+
+                        if image_data is None:
+                            raise Exception("SSE流式调用未能获取图片数据")
+                    else:
+                        logger.info(f"  使用标准 JSON 调用生成图片 [{index}]")
+                        image_data = self.generator.generate_image(
+                            prompt=prompt,
+                            aspect_ratio=self.provider_config.get('default_aspect_ratio', '3:4'),
+                            temperature=self.provider_config.get('temperature', 1.0),
+                            model=self.provider_config.get('model', 'nano-banana-2'),
+                            reference_images=reference_images if reference_images else None,
+                        )
                 else:
                     logger.debug(f"  使用 OpenAI 兼容生成器")
                     # 检查是否使用SSE流式调用
