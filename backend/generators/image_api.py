@@ -1,4 +1,5 @@
 """Image API 图片生成器"""
+import json
 import logging
 import time
 import random
