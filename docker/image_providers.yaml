@@ -7,7 +7,7 @@ providers:
     base_url: https://flow2aaa.zeabur.app
     endpoint_type: /v1/chat/completions
     high_concurrency: false
-    model: gemini-2.5-flash-image-landscape
+    model: gemini-3.0-pro-image-portrait
     short_prompt: false
     type: image_api
     use_sse: true
